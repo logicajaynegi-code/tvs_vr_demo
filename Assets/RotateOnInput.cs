@@ -7,25 +7,29 @@ public class RotateOnInput : MonoBehaviour
 {
     [Header("Rotation Settings")]
     [SerializeField] private float rotationSpeed = 240f;
-    [SerializeField] private float smoothTime = 0.07f;
-    [SerializeField] private float inertiaDamping = 2f; // higher = stops faster
+    [SerializeField] private float smoothTime = 0.03f;   // LOW = responsive, was 0.07 (too sluggish)
+    [SerializeField] private float inertiaDamping = 2f;
+    [SerializeField] private float deadzone = 0.1f;
 
-    [Header("Input")]
+    [Header("Auto Rotation")]
+    [SerializeField] private float autoRotateSpeed = 60f;
+
+    [Header("Input Actions")]
     [SerializeField] private InputActionProperty rotateAxisAction;
+    [SerializeField] private InputActionProperty autoRotateAction;
 
-    [SerializeField] private InputActionProperty autoRotateAction; // A button
+    // public setters for VR slider panel
+    public void SetRotationSpeed(float v) => rotationSpeed = v;
+    public void SetSmoothTime(float v) => smoothTime = Mathf.Max(0.01f, v);
+    public void SetInertiaDamping(float v) => inertiaDamping = v;
+    public void SetAutoRotateSpeed(float v) => autoRotateSpeed = v;
 
     private XRGrabInteractable grabInteractable;
     private bool isGrabbed = false;
-
-    private float currentVelocity;
-
-    [SerializeField] private float autoRotateSpeed = 60f;
-
     private bool isAutoRotating = false;
 
-    private float rotationVelocity = 0f;
-    private float currentYRotationSpeed = 0f;
+    private float smoothedInput = 0f;
+    private float inputVelocity = 0f;   // SmoothDamp ref — only ONE, no chaining
 
     private void Awake()
     {
@@ -34,113 +38,73 @@ public class RotateOnInput : MonoBehaviour
 
     private void OnEnable()
     {
-        if (autoRotateAction.action != null)
-            autoRotateAction.action.Enable();
+        rotateAxisAction.action?.Enable();
+        autoRotateAction.action?.Enable();
         grabInteractable.selectEntered.AddListener(OnGrab);
         grabInteractable.selectExited.AddListener(OnRelease);
-
-        if (rotateAxisAction.action != null)
-            rotateAxisAction.action.Enable();
     }
 
     private void OnDisable()
     {
-        if (autoRotateAction.action != null)
-            autoRotateAction.action.Disable();
+        rotateAxisAction.action?.Disable();
+        autoRotateAction.action?.Disable();
         grabInteractable.selectEntered.RemoveListener(OnGrab);
         grabInteractable.selectExited.RemoveListener(OnRelease);
-
-        if (rotateAxisAction.action != null)
-            rotateAxisAction.action.Disable();
     }
 
     private void OnGrab(SelectEnterEventArgs args)
     {
         isGrabbed = true;
         isAutoRotating = false;
+        // clear smoothing state so rotation starts fresh on grab
+        smoothedInput = 0f;
+        inputVelocity = 0f;
     }
 
     private void OnRelease(SelectExitEventArgs args)
     {
         isGrabbed = false;
-        // Keep currentRotationSpeed → this becomes inertia
+        // smoothedInput keeps its value → becomes inertia coast
     }
-
-    private float lastInputX = 0f;
 
     private void Update()
     {
+        // toggle auto-rotate (only when not holding the model)
         if (!isGrabbed && autoRotateAction.action != null && autoRotateAction.action.WasPressedThisFrame())
-        {
             isAutoRotating = !isAutoRotating;
-        }
-        if (rotateAxisAction.action == null) return;
 
-        float inputX = 0f;
-
-        if (isGrabbed)
-        {
-            Vector2 input = rotateAxisAction.action.ReadValue<Vector2>();
-            inputX = input.x;
-            // ✅ DEADZONE goes HERE
-
-            inputX = Mathf.Sign(inputX) * Mathf.Max(0, Mathf.Abs(inputX) - 0.1f);
-        }
-
-        // Smooth input instead of speed (KEY FIX)
-        float smoothedInput = Mathf.SmoothDamp(
-            lastInputX,
-            inputX,
-            ref currentVelocity,
-            smoothTime
-        );
-
-        lastInputX = smoothedInput;
-        // ✅ ADD HERE
-        if (isAutoRotating)
-        {
-            lastInputX = 0f; // prevents inertia/manual conflict
-            currentVelocity = 0f;
-        }
-        // Apply rotation
-        float rotation = 0f;
-
+        // ── auto rotation ────────────────────────────────────────────────────
         if (isAutoRotating && !isGrabbed)
         {
-            // Auto rotation (constant speed)
-            rotation = autoRotateSpeed;
-        }
-        else
-        {
-            // Manual rotation
-            float inputStrength = Mathf.Abs(smoothedInput);
-
-            // Boost sensitivity curve (IMPORTANT)
-            float boostedInput = Mathf.Pow(inputStrength, 0.4f); // sqrt curve
-
-            float dynamicSpeed = Mathf.Lerp(220f, rotationSpeed, boostedInput);
-            rotation = -smoothedInput * dynamicSpeed ;
-
+            transform.Rotate(Vector3.up, autoRotateSpeed * Time.deltaTime, Space.World);
+            smoothedInput = 0f;
+            inputVelocity = 0f;
+            return;                 // skip everything else — keeps auto smooth
         }
 
-        // Smooth rotation
+        // ── read thumbstick ──────────────────────────────────────────────────
+        float rawInput = 0f;
 
-        // Smooth rotation speed (NOT angle)
-        currentYRotationSpeed = Mathf.SmoothDamp(
-            currentYRotationSpeed,
-            rotation,
-            ref rotationVelocity,
-            0.05f // smoothing for rotation itself
-        );
-
-        transform.Rotate(Vector3.up, currentYRotationSpeed * Time.deltaTime, Space.World);
-
-        // Inertia when released
-        if (!isGrabbed && !isAutoRotating)
+        if (isGrabbed && rotateAxisAction.action != null)
         {
-            lastInputX = Mathf.Lerp(lastInputX, 0f, inertiaDamping * Time.deltaTime);
-            if (Mathf.Abs(lastInputX) < 0.001f)
-                lastInputX = 0f;
+            float x = rotateAxisAction.action.ReadValue<Vector2>().x;
+
+            // deadzone: strip noise below threshold, rescale remainder to 0-1
+            if (Mathf.Abs(x) > deadzone)
+                rawInput = Mathf.Sign(x) * (Mathf.Abs(x) - deadzone) / (1f - deadzone);
+        }
+
+        // ── single SmoothDamp on raw input (FIX: was double-smoothed before) ─
+        smoothedInput = Mathf.SmoothDamp(smoothedInput, rawInput, ref inputVelocity, smoothTime);
+
+        // ── apply rotation ───────────────────────────────────────────────────
+        transform.Rotate(Vector3.up, -smoothedInput * rotationSpeed * Time.deltaTime, Space.World);
+
+        // ── inertia coast after release ──────────────────────────────────────
+        if (!isGrabbed)
+        {
+            smoothedInput = Mathf.Lerp(smoothedInput, 0f, inertiaDamping * Time.deltaTime);
+            if (Mathf.Abs(smoothedInput) < 0.001f) smoothedInput = 0f;
         }
     }
 }
