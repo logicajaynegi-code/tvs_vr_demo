@@ -19,6 +19,9 @@ public class RotateOnInput : MonoBehaviour
     [SerializeField] private InputActionProperty autoRotateAction;
 
     // public setters for VR slider panel
+
+    private Quaternion initialRotation;
+
     public void SetRotationSpeed(float v) => rotationSpeed = v;
     public void SetSmoothTime(float v) => smoothTime = Mathf.Max(0.01f, v);
     public void SetInertiaDamping(float v) => inertiaDamping = v;
@@ -59,6 +62,9 @@ public class RotateOnInput : MonoBehaviour
         // clear smoothing state so rotation starts fresh on grab
         smoothedInput = 0f;
         inputVelocity = 0f;
+ 
+
+        initialRotation = transform.rotation;
     }
 
     private void OnRelease(SelectExitEventArgs args)
@@ -69,6 +75,12 @@ public class RotateOnInput : MonoBehaviour
 
     private void Update()
     {
+        //if (isGrabbed)
+        //{
+        //    // force object to keep original upright orientation
+        //    Vector3 euler = transform.rotation.eulerAngles;
+        //    transform.rotation = Quaternion.Euler(0f, euler.y, 0f);
+        //}
         // toggle auto-rotate (only when not holding the model)
         if (!isGrabbed && autoRotateAction.action != null && autoRotateAction.action.WasPressedThisFrame())
             isAutoRotating = !isAutoRotating;
@@ -98,7 +110,7 @@ public class RotateOnInput : MonoBehaviour
         smoothedInput = Mathf.SmoothDamp(smoothedInput, rawInput, ref inputVelocity, smoothTime);
 
         // ── apply rotation ───────────────────────────────────────────────────
-        transform.Rotate(Vector3.up, -smoothedInput * rotationSpeed * Time.deltaTime, Space.World);
+        transform.Rotate(Vector3.up, -smoothedInput * rotationSpeed * Time.deltaTime, Space.Self);
 
         // ── inertia coast after release ──────────────────────────────────────
         if (!isGrabbed)

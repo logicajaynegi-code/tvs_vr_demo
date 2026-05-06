@@ -8,9 +8,6 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/TVS_VR -basci.unity
     guid: 12544d6a9da6cab4086bae51bc492e2c
-  - enabled: 1
-    path: Assets/Scenes/TVS_VR.unity
-    guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: e20c7fc67cc7bc041aa563ae5ddfef03, type: 2}
