@@ -55,16 +55,32 @@ public class RotateOnInput : MonoBehaviour
         grabInteractable.selectExited.RemoveListener(OnRelease);
     }
 
+    //private void OnGrab(SelectEnterEventArgs args)
+    //{
+    //    isGrabbed = true;
+    //    isAutoRotating = false;
+    //    // clear smoothing state so rotation starts fresh on grab
+    //    smoothedInput = 0f;
+    //    inputVelocity = 0f;
+
+
+    //    initialRotation = transform.rotation;
+    //}
+    private float currentYRotation;
+
     private void OnGrab(SelectEnterEventArgs args)
     {
         isGrabbed = true;
         isAutoRotating = false;
-        // clear smoothing state so rotation starts fresh on grab
+
         smoothedInput = 0f;
         inputVelocity = 0f;
- 
 
-        initialRotation = transform.rotation;
+        // store current Y rotation only
+        currentYRotation = transform.eulerAngles.y;
+        // lock current upright rotation
+        transform.rotation =
+            Quaternion.Euler(0f, currentYRotation, 0f);
     }
 
     private void OnRelease(SelectExitEventArgs args)
@@ -73,50 +89,128 @@ public class RotateOnInput : MonoBehaviour
         // smoothedInput keeps its value → becomes inertia coast
     }
 
+    //private void Update()
+    //{
+    //    //if (isGrabbed)
+    //    //{
+    //    //    // force object to keep original upright orientation
+    //    //    Vector3 euler = transform.rotation.eulerAngles;
+    //    //    transform.rotation = Quaternion.Euler(0f, euler.y, 0f);
+    //    //}
+    //    // toggle auto-rotate (only when not holding the model)
+    //    if (!isGrabbed && autoRotateAction.action != null && autoRotateAction.action.WasPressedThisFrame())
+    //        isAutoRotating = !isAutoRotating;
+
+    //    // ── auto rotation ────────────────────────────────────────────────────
+    //    if (isAutoRotating && !isGrabbed)
+    //    {
+    //        transform.Rotate(Vector3.up, autoRotateSpeed * Time.deltaTime, Space.World);
+    //        smoothedInput = 0f;
+    //        inputVelocity = 0f;
+    //        return;                 // skip everything else — keeps auto smooth
+    //    }
+
+    //    // ── read thumbstick ──────────────────────────────────────────────────
+    //    float rawInput = 0f;
+
+    //    if (isGrabbed && rotateAxisAction.action != null)
+    //    {
+    //        float x = rotateAxisAction.action.ReadValue<Vector2>().x;
+
+    //        // deadzone: strip noise below threshold, rescale remainder to 0-1
+    //        if (Mathf.Abs(x) > deadzone)
+    //            rawInput = Mathf.Sign(x) * (Mathf.Abs(x) - deadzone) / (1f - deadzone);
+    //    }
+
+    //    // ── single SmoothDamp on raw input (FIX: was double-smoothed before) ─
+    //    smoothedInput = Mathf.SmoothDamp(smoothedInput, rawInput, ref inputVelocity, smoothTime);
+
+    //    // ── apply rotation ───────────────────────────────────────────────────
+    //    transform.Rotate(Vector3.up, -smoothedInput * rotationSpeed * Time.deltaTime, Space.Self);
+
+    //    // ── inertia coast after release ──────────────────────────────────────
+    //    if (!isGrabbed)
+    //    {
+    //        smoothedInput = Mathf.Lerp(smoothedInput, 0f, inertiaDamping * Time.deltaTime);
+    //        if (Mathf.Abs(smoothedInput) < 0.001f) smoothedInput = 0f;
+    //    }
+    //}
     private void Update()
     {
-        //if (isGrabbed)
-        //{
-        //    // force object to keep original upright orientation
-        //    Vector3 euler = transform.rotation.eulerAngles;
-        //    transform.rotation = Quaternion.Euler(0f, euler.y, 0f);
-        //}
-        // toggle auto-rotate (only when not holding the model)
-        if (!isGrabbed && autoRotateAction.action != null && autoRotateAction.action.WasPressedThisFrame())
-            isAutoRotating = !isAutoRotating;
-
-        // ── auto rotation ────────────────────────────────────────────────────
-        if (isAutoRotating && !isGrabbed)
+        // Toggle auto rotate
+        if (!isGrabbed &&
+            autoRotateAction.action != null &&
+            autoRotateAction.action.WasPressedThisFrame())
         {
-            transform.Rotate(Vector3.up, autoRotateSpeed * Time.deltaTime, Space.World);
-            smoothedInput = 0f;
-            inputVelocity = 0f;
-            return;                 // skip everything else — keeps auto smooth
+            isAutoRotating = !isAutoRotating;
         }
 
-        // ── read thumbstick ──────────────────────────────────────────────────
         float rawInput = 0f;
 
+        // Read thumbstick ONLY when grabbed
         if (isGrabbed && rotateAxisAction.action != null)
         {
             float x = rotateAxisAction.action.ReadValue<Vector2>().x;
 
-            // deadzone: strip noise below threshold, rescale remainder to 0-1
             if (Mathf.Abs(x) > deadzone)
-                rawInput = Mathf.Sign(x) * (Mathf.Abs(x) - deadzone) / (1f - deadzone);
+            {
+                rawInput =
+                    Mathf.Sign(x) *
+                    (Mathf.Abs(x) - deadzone) /
+                    (1f - deadzone);
+            }
         }
 
-        // ── single SmoothDamp on raw input (FIX: was double-smoothed before) ─
-        smoothedInput = Mathf.SmoothDamp(smoothedInput, rawInput, ref inputVelocity, smoothTime);
+        // Smooth input
+        smoothedInput = Mathf.SmoothDamp(
+            smoothedInput,
+            rawInput,
+            ref inputVelocity,
+            smoothTime
+        );
 
-        // ── apply rotation ───────────────────────────────────────────────────
-        transform.Rotate(Vector3.up, -smoothedInput * rotationSpeed * Time.deltaTime, Space.Self);
+        // AUTO ROTATE
+        if (isAutoRotating && !isGrabbed)
+        {
+            currentYRotation += autoRotateSpeed * Time.deltaTime;
+        }
 
-        // ── inertia coast after release ──────────────────────────────────────
+       // MANUAL ROTATE
+        if (isGrabbed || Mathf.Abs(smoothedInput) > 0.001f)
+        {
+            currentYRotation +=
+                -smoothedInput *
+                rotationSpeed *
+                Time.deltaTime;
+        }
+
+        // APPLY ONLY Y ROTATION
+        transform.eulerAngles =
+           new Vector3(0f, currentYRotation, 0f);
+
+        // INERTIA
         if (!isGrabbed)
         {
-            smoothedInput = Mathf.Lerp(smoothedInput, 0f, inertiaDamping * Time.deltaTime);
-            if (Mathf.Abs(smoothedInput) < 0.001f) smoothedInput = 0f;
+            smoothedInput = Mathf.Lerp(
+                smoothedInput,
+                0f,
+                inertiaDamping * Time.deltaTime
+            );
+
+            if (Mathf.Abs(smoothedInput) < 0.001f)
+            {
+                smoothedInput = 0f;
+            }
+        }
+    }
+    private void LateUpdate()
+    {
+        if (isGrabbed)
+        {
+            Vector3 rot = transform.eulerAngles;
+
+            transform.rotation =
+                Quaternion.Euler(0f, rot.y, 0f);
         }
     }
 }

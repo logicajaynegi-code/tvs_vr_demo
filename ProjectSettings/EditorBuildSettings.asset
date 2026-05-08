@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/TVS_VR -basci 1.unity
+    guid: 9b08834869d9e244aaca0ee8ddf3480f
+  - enabled: 1
     path: Assets/Scenes/TVS_VR -basci.unity
     guid: 12544d6a9da6cab4086bae51bc492e2c
   m_configObjects:
